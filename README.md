@@ -108,3 +108,49 @@ internal/analysis           cliente HTTP hacia Scala
 internal/api                handlers HTTP
 testdata/events_spec.json   entregable del Día 1
 ```
+
+## Simulador de eventos (Día 4)
+
+Genera eventos coherentes de varias partidas y los envía **en paralelo** (una goroutine por
+partida) al módulo Go. Al terminar compara la respuesta de cada evento con la esperada.
+
+```bash
+# 1) Con el servidor Go corriendo en otra terminal:
+go run ./cmd/simulator
+
+# Solo generar un archivo, sin enviar:
+go run ./cmd/simulator -send=false -out eventos_sim.json
+```
+
+Escenarios que genera (todos con `seed` fija, así que son reproducibles):
+
+| Partida | Escenario | Qué debe detectar Scala |
+|---|---|---|
+| `fps-01` | `streak` | 1 racha de 3 eliminaciones (< 30 s) |
+| `fps-02` | `boundary` | **Ninguna**: 3 eliminaciones a exactamente 15 s entre sí (la 3ª a 30 s de la 1ª; la regla pide *menos* de 30 s) |
+| `fps-03` | `normal` | Ninguna: eliminaciones separadas ≥ 16 s |
+| `fps-04` | `long-streak` | 1 racha de 5 eliminaciones |
+| `race-01` | `race` | Partida de otro juego (`race-x`) con vueltas y posiciones |
+
+Además inyecta 9 eventos inválidos (uno de cada tipo: falta `matchId`, timestamp inválido,
+tipo y acción desconocidos, auto-eliminación, daño negativo, sin `playerId`, duplicado y JSON
+mal formado). El simulador imprime las rachas esperadas para que se comparen con lo que calcule Scala.
+
+| Flag | Default | Descripción |
+|---|---|---|
+| `-url` | `http://localhost:8080/events` | Dónde enviar |
+| `-matches` | `4` | Partidas FPS (los escenarios rotan) |
+| `-race` | `1` | Partidas de carreras (`0` = desactivar) |
+| `-players` | `3` | Jugadores por partida FPS |
+| `-invalid` | `9` | Eventos inválidos a inyectar |
+| `-seed` | `42` | Misma semilla = mismos eventos |
+| `-prefix` | `sim-MMDD-HHMM-` | Prefijo de `matchId`/`eventId` (evita duplicados al reejecutar) |
+| `-delay` | `20ms` | Pausa entre eventos de una misma partida |
+| `-out` | *(vacío)* | Guarda los eventos en un archivo JSON |
+| `-send` | `true` | `false` = solo generar |
+
+El archivo de `-out` también se puede enviar de una vez con
+`curl -X POST localhost:8080/events -d @eventos_sim.json` (el endpoint acepta arreglos).
+
+La prueba `internal/simulator` pasa todo lo generado por el módulo Go real: los válidos se aceptan,
+cada inválido falla con el código esperado, y las rachas declaradas coinciden con la regla del Día 1.

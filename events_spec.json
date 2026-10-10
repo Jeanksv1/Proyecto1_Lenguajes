@@ -78,6 +78,33 @@
         "headshot": { "type": "boolean", "required": false }
       }
     },
+    "RACE_STARTED": {
+      "description": "Inicio de una carrera (juego race-x). Evento de inicio del segundo juego de ejemplo.",
+      "playerId": "null",
+      "action": "no aplica",
+      "data": {
+        "track": { "type": "string",  "required": true },
+        "laps":  { "type": "integer", "required": true, "rules": ">= 1" }
+      }
+    },
+    "LAP_COMPLETED": {
+      "description": "Un piloto completa una vuelta (race-x).",
+      "playerId": "obligatorio",
+      "action": "no aplica",
+      "data": {
+        "lap":       { "type": "integer", "required": true, "rules": ">= 1" },
+        "lapTimeMs": { "type": "number",  "required": true, "rules": ">= 0" },
+        "position":  { "type": "integer", "required": true, "rules": ">= 1" }
+      }
+    },
+    "RACE_FINISHED": {
+      "description": "Fin de una carrera (race-x).",
+      "playerId": "null",
+      "action": "no aplica",
+      "data": {
+        "reason": { "type": "string", "required": true, "allowed": ["COMPLETED", "ABORTED"] }
+      }
+    },
     "MATCH_FINISHED": {
       "description": "Fin de la partida.",
       "playerId": "null",
@@ -195,6 +222,24 @@
         "gameId": "race-x", "gameVersion": "2.1.0", "matchId": "race-042",
         "playerId": "p7", "type": "LAP_COMPLETED",
         "data": { "lap": 3, "lapTimeMs": 84250, "position": 2 }
+      }
+    },
+    {
+      "description": "race-x: inicio de carrera",
+      "event": {
+        "eventId": "evt-9000", "timestamp": "2026-09-01T11:00:00.000Z",
+        "gameId": "race-x", "gameVersion": "2.1.0", "matchId": "race-042",
+        "playerId": null, "type": "RACE_STARTED",
+        "data": { "track": "monaco", "laps": 3 }
+      }
+    },
+    {
+      "description": "race-x: fin de carrera",
+      "event": {
+        "eventId": "evt-9002", "timestamp": "2026-09-01T11:09:00.000Z",
+        "gameId": "race-x", "gameVersion": "2.1.0", "matchId": "race-042",
+        "playerId": null, "type": "RACE_FINISHED",
+        "data": { "reason": "COMPLETED" }
       }
     }
   ],

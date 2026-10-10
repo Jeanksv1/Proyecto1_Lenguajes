@@ -5,17 +5,37 @@
       "player": "forbidden",
       "startsMatch": true,
       "fields": [
-        { "name": "map", "kind": "string", "required": true },
-        { "name": "mode", "kind": "string", "required": true },
-        { "name": "maxPlayers", "kind": "integer", "required": true, "min": 1 }
+        {
+          "name": "map",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "mode",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "maxPlayers",
+          "kind": "integer",
+          "required": true,
+          "min": 1
+        }
       ]
     },
     "PLAYER_JOINED": {
       "description": "Un jugador se une a la partida",
       "player": "required",
       "fields": [
-        { "name": "nickname", "kind": "string", "required": true },
-        { "name": "team", "kind": "string" }
+        {
+          "name": "nickname",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "team",
+          "kind": "string"
+        }
       ]
     },
     "PLAYER_ACTION": {
@@ -23,20 +43,53 @@
       "player": "required",
       "actions": {
         "SHOOT": [
-          { "name": "weapon", "kind": "string", "required": true },
-          { "name": "hit", "kind": "boolean", "required": true },
-          { "name": "damage", "kind": "number", "required": true, "min": 0, "zeroUnless": "hit" },
-          { "name": "targetId", "kind": "string" }
+          {
+            "name": "weapon",
+            "kind": "string",
+            "required": true
+          },
+          {
+            "name": "hit",
+            "kind": "boolean",
+            "required": true
+          },
+          {
+            "name": "damage",
+            "kind": "number",
+            "required": true,
+            "min": 0,
+            "zeroUnless": "hit"
+          },
+          {
+            "name": "targetId",
+            "kind": "string"
+          }
         ],
         "RELOAD": [
-          { "name": "weapon", "kind": "string", "required": true }
+          {
+            "name": "weapon",
+            "kind": "string",
+            "required": true
+          }
         ],
         "MOVE": [
-          { "name": "x", "kind": "number", "required": true },
-          { "name": "y", "kind": "number", "required": true }
+          {
+            "name": "x",
+            "kind": "number",
+            "required": true
+          },
+          {
+            "name": "y",
+            "kind": "number",
+            "required": true
+          }
         ],
         "PICKUP_ITEM": [
-          { "name": "item", "kind": "string", "required": true }
+          {
+            "name": "item",
+            "kind": "string",
+            "required": true
+          }
         ]
       }
     },
@@ -44,10 +97,26 @@
       "description": "playerId es quien elimina; la victima va en data.victimId",
       "player": "required",
       "fields": [
-        { "name": "victimId", "kind": "string", "required": true, "notEqualToPlayerId": true },
-        { "name": "weapon", "kind": "string", "required": true },
-        { "name": "distance", "kind": "number", "min": 0 },
-        { "name": "headshot", "kind": "boolean" }
+        {
+          "name": "victimId",
+          "kind": "string",
+          "required": true,
+          "notEqualToPlayerId": true
+        },
+        {
+          "name": "weapon",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "distance",
+          "kind": "number",
+          "min": 0
+        },
+        {
+          "name": "headshot",
+          "kind": "boolean"
+        }
       ]
     },
     "MATCH_FINISHED": {
@@ -55,16 +124,74 @@
       "player": "forbidden",
       "endsMatch": true,
       "fields": [
-        { "name": "reason", "kind": "string", "required": true, "allowed": ["TIME_LIMIT", "SCORE_LIMIT", "ABORTED"] }
+        {
+          "name": "reason",
+          "kind": "string",
+          "required": true,
+          "allowed": [
+            "TIME_LIMIT",
+            "SCORE_LIMIT",
+            "ABORTED"
+          ]
+        }
       ]
     },
     "LAP_COMPLETED": {
       "description": "Ejemplo de extensibilidad (carreras): se agrego solo editando este archivo",
       "player": "required",
       "fields": [
-        { "name": "lap", "kind": "integer", "required": true, "min": 1 },
-        { "name": "lapTimeMs", "kind": "number", "required": true, "min": 0 },
-        { "name": "position", "kind": "integer", "required": true, "min": 1 }
+        {
+          "name": "lap",
+          "kind": "integer",
+          "required": true,
+          "min": 1
+        },
+        {
+          "name": "lapTimeMs",
+          "kind": "number",
+          "required": true,
+          "min": 0
+        },
+        {
+          "name": "position",
+          "kind": "integer",
+          "required": true,
+          "min": 1
+        }
+      ]
+    },
+    "RACE_STARTED": {
+      "description": "Inicio de una carrera (juego race-x)",
+      "player": "forbidden",
+      "startsMatch": true,
+      "fields": [
+        {
+          "name": "track",
+          "kind": "string",
+          "required": true
+        },
+        {
+          "name": "laps",
+          "kind": "integer",
+          "required": true,
+          "min": 1
+        }
+      ]
+    },
+    "RACE_FINISHED": {
+      "description": "Fin de una carrera; dispara el envio a Scala",
+      "player": "forbidden",
+      "endsMatch": true,
+      "fields": [
+        {
+          "name": "reason",
+          "kind": "string",
+          "required": true,
+          "allowed": [
+            "COMPLETED",
+            "ABORTED"
+          ]
+        }
       ]
     }
   }
