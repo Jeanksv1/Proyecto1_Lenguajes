@@ -196,7 +196,9 @@ simulador.
   ventanas solapadas se fusionan.
 - La respuesta incluye además `complete` (el flag que manda Go).
 - Para otros juegos (p. ej. `race-x`) responde sin error: la duración se calcula con
-  `RACE_STARTED`/`RACE_FINISHED` y las métricas de combate quedan en cero.
+  `RACE_STARTED`/`RACE_FINISHED`, las métricas de combate quedan en cero y `raceStats`
+  incluye vueltas completadas, mejor/promedio tiempo por vuelta y posición final por piloto.
+  En partidas FPS, `raceStats` es una lista vacía.
 
 ## Estructura
 

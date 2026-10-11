@@ -60,6 +60,7 @@ class AnalyzerSuite extends munit.FunSuite:
     val p2 = res.playerStats.find(_.playerId == "p2").get
     assertEquals((p2.kills, p2.deaths, p2.kdRatio), (0, 3, 0.0))
     assertEquals((p2.shots, p2.hits, p2.accuracy, p2.totalDamage), (0, 0, 0.0, 0.0))
+    assertEquals(res.raceStats, Nil)
 
     assertEquals(res.patterns.killStreaks.size, 1)
     val s = res.patterns.killStreaks.head
@@ -141,7 +142,21 @@ class AnalyzerSuite extends munit.FunSuite:
 
   test("una partida de carreras no falla: duracion calculada y metricas FPS en cero") {
     def race(id: String, ms: Long, player: Option[String], tpe: String) =
-      Event(id, t0.plusMillis(ms), "race-x", "2.1.0", "r1", player, tpe, None, Map.empty)
+      Event(
+        id,
+        t0.plusMillis(ms),
+        "race-x",
+        "2.1.0",
+        "r1",
+        player,
+        tpe,
+        None,
+        if tpe == "LAP_COMPLETED" then Map(
+          "lapTimeMs" -> Json.fromInt(90000),
+          "position" -> Json.fromInt(1)
+        )
+        else Map.empty
+      )
     val evs = List(
       race("r-1", 0, None, "RACE_STARTED"),
       race("r-2", secs(90), Some("d1"), "LAP_COMPLETED"),
@@ -153,4 +168,39 @@ class AnalyzerSuite extends munit.FunSuite:
     assertEquals(res.matchStats.mvpPlayerId, None)
     assertEquals(res.playerStats.map(_.playerId), List("d1"))
     assertEquals(res.patterns.killStreaks, Nil)
+    assertEquals(res.raceStats, List(RaceStats("d1", 1, 90000, 90000.0, 1)))
+  }
+
+  test("una carrera calcula metricas por piloto") {
+    def lap(id: String, ms: Long, player: String, lapTimeMs: Int, position: Int) =
+      Event(
+        id,
+        t0.plusMillis(ms),
+        "race-x",
+        "2.1.0",
+        "r1",
+        Some(player),
+        "LAP_COMPLETED",
+        None,
+        Map(
+          "lapTimeMs" -> Json.fromInt(lapTimeMs),
+          "position" -> Json.fromInt(position)
+        )
+      )
+
+    val res = Analyzer.analyze(request(List(
+      lap("r-1", secs(10), "d1", 90000, 2),
+      lap("r-2", secs(11), "d2", 88000, 1),
+      lap("r-3", secs(20), "d1", 85000, 1),
+      lap("r-4", secs(21), "d2", 91000, 2),
+      lap("r-5", secs(30), "d1", 87000, 2)
+    )))
+
+    assertEquals(
+      res.raceStats,
+      List(
+        RaceStats("d1", 3, 85000, 87333.333, 2),
+        RaceStats("d2", 2, 88000, 89500.0, 2)
+      )
+    )
   }

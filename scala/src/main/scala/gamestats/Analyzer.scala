@@ -24,7 +24,8 @@ object Analyzer:
       complete = req.complete,
       matchStats = matchStats(events, players),
       playerStats = players,
-      patterns = Patterns(killStreaks(events))
+      patterns = Patterns(killStreaks(events)),
+      raceStats = raceStats(events)
     )
 
   // ------------------------------------------------------------ ordenamiento
@@ -71,6 +72,34 @@ object Analyzer:
         totalDamage = round(damageBy.getOrElse(p, 0.0), 2)
       )
     }
+
+  // ------------------------------------------------------------ metricas de carreras
+
+  def raceStats(events: List[Event]): List[RaceStats] =
+    events
+      .filter(_.eventType == "LAP_COMPLETED")
+      .flatMap { event =>
+        for
+          player <- event.playerId
+          lapTime <- event.data.get("lapTimeMs").flatMap(_.asNumber).map(_.toDouble.toLong)
+          position <- event.data.get("position").flatMap(_.asNumber).map(_.toDouble.toInt)
+        yield player -> (lapTime, position)
+      }
+      .groupBy(_._1)
+      .toList
+      .sortBy(_._1)
+      .map { case (player, laps) =>
+        val values = laps.map(_._2)
+        val best = values.map(_._1).min
+        val average = values.map(_._1).foldLeft(0L)(_ + _).toDouble / values.size
+        RaceStats(
+          playerId = player,
+          lapsCompleted = values.size,
+          bestLapMs = best,
+          avgLapMs = round(average, 3),
+          finalPosition = values.last._2
+        )
+      }
 
   // ------------------------------------------------------------ metricas por partida
 

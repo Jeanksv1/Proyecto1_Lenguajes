@@ -105,13 +105,24 @@ final case class Patterns(killStreaks: List[KillStreak])
 object Patterns:
   given Encoder[Patterns] = deriveEncoder
 
+final case class RaceStats(
+    playerId: String,
+    lapsCompleted: Int,
+    bestLapMs: Long,
+    avgLapMs: Double,
+    finalPosition: Int
+)
+object RaceStats:
+  given Encoder[RaceStats] = deriveEncoder
+
 final case class AnalysisResult(
     matchId: String,
     gameId: String,
     complete: Boolean,
     matchStats: MatchStats,
     playerStats: List[PlayerStats],
-    patterns: Patterns
+    patterns: Patterns,
+    raceStats: List[RaceStats]
 )
 object AnalysisResult:
   given Encoder[AnalysisResult] = deriveEncoder
