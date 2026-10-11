@@ -2,3 +2,14 @@
 *.exe
 *.test
 *.out
+
+# Scala / sbt
+target/
+project/target/
+project/project/
+.bsp/
+.metals/
+.bloop/
+output/
+.vscode/
+.idea/

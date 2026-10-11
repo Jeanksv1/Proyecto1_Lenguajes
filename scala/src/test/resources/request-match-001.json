@@ -1,0 +1,11 @@
+{"matchId":"match-001","gameId":"fps-arena","gameVersion":"1.0.0","sentAt":"2026-09-01T10:01:01.000Z","complete":true,"events":[
+{"eventId":"e1","timestamp":"2026-09-01T10:00:00.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":null,"type":"MATCH_STARTED","data":{"map":"dust-valley","mode":"deathmatch","maxPlayers":8}},
+{"eventId":"e2","timestamp":"2026-09-01T10:00:01.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":"p1","type":"PLAYER_JOINED","data":{"nickname":"Shadow","team":"red"}},
+{"eventId":"e3","timestamp":"2026-09-01T10:00:02.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":"p2","type":"PLAYER_JOINED","data":{"nickname":"Viper","team":"blue"}},
+{"eventId":"e4","timestamp":"2026-09-01T10:00:11.500Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":"p1","type":"PLAYER_ACTION","action":"SHOOT","data":{"weapon":"rifle","hit":true,"damage":100,"targetId":"p2"}},
+{"eventId":"e5","timestamp":"2026-09-01T10:00:12.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":"p1","type":"PLAYER_ELIMINATED","data":{"victimId":"p2","weapon":"rifle","distance":35.5,"headshot":true}},
+{"eventId":"e6","timestamp":"2026-09-01T10:00:19.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":"p1","type":"PLAYER_ACTION","action":"SHOOT","data":{"weapon":"rifle","hit":false,"damage":0}},
+{"eventId":"e7","timestamp":"2026-09-01T10:00:20.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":"p1","type":"PLAYER_ELIMINATED","data":{"victimId":"p2","weapon":"rifle","distance":12.0,"headshot":false}},
+{"eventId":"e8","timestamp":"2026-09-01T10:00:33.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":"p1","type":"PLAYER_ELIMINATED","data":{"victimId":"p2","weapon":"pistol","distance":5.0,"headshot":false}},
+{"eventId":"e9","timestamp":"2026-09-01T10:01:00.000Z","gameId":"fps-arena","gameVersion":"1.0.0","matchId":"match-001","playerId":null,"type":"MATCH_FINISHED","data":{"reason":"TIME_LIMIT"}}
+]}

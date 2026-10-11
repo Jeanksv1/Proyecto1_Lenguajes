@@ -154,3 +154,56 @@ El archivo de `-out` también se puede enviar de una vez con
 
 La prueba `internal/simulator` pasa todo lo generado por el módulo Go real: los válidos se aceptan,
 cada inválido falla con el código esperado, y las rachas declaradas coinciden con la regla del Día 1.
+
+---
+
+# GameStats — Módulo Scala (análisis)
+
+Recibe una partida completa desde el módulo Go (`POST /analyze`), calcula estadísticas y detecta
+patrones con colecciones funcionales, y devuelve el resultado en JSON. Scala 3.3 + sbt + Http4s
+(Ember) + circe.
+
+## Ejecutar
+
+Desde la carpeta `scala/`:
+
+```bash
+sbt run                       # escucha en :9090
+sbt test                      # pruebas (munit)
+PORT=9091 OUTPUT_DIR=./output sbt run
+```
+
+| Variable | Default | Descripción |
+|---|---|---|
+| `PORT` | `9090` | Puerto HTTP |
+| `OUTPUT_DIR` | *(vacío)* | Si se define, guarda cada resultado como `<matchId>.json` |
+
+Con Scala corriendo, arranca Go con `SCALA_URL=http://localhost:9090 go run ./cmd/server` y usa el
+simulador.
+
+## Endpoints
+
+- `POST /analyze` → `200` con el resultado, `400` si el payload es inválido, `500` en error interno.
+- `GET /health`
+
+## Qué calcula
+
+- **Por jugador:** `kills`, `deaths`, `kdRatio` (si `deaths = 0` → `kills`; 2 decimales),
+  `shots`, `hits`, `accuracy` (4 decimales), `totalDamage`.
+- **Por partida:** `durationSeconds`, `totalKills`, `mvpPlayerId` (más kills; desempates: mayor
+  daño, menos muertes, `playerId` alfabético; `null` si nadie tiene kills).
+- **Patrón `KILL_STREAK`:** ≥ 3 eliminaciones del mismo jugador con `t[i+2] - t[i] < 30 s`;
+  ventanas solapadas se fusionan.
+- La respuesta incluye además `complete` (el flag que manda Go).
+- Para otros juegos (p. ej. `race-x`) responde sin error: la duración se calcula con
+  `RACE_STARTED`/`RACE_FINISHED` y las métricas de combate quedan en cero.
+
+## Estructura
+
+```
+scala/src/main/scala/gamestats/Models.scala    case classes + decoders/encoders circe
+scala/src/main/scala/gamestats/Analyzer.scala  lógica pura
+scala/src/main/scala/gamestats/Routes.scala    rutas Http4s
+scala/src/main/scala/gamestats/Main.scala      arranque del servidor
+scala/src/test/...                             pruebas con el ejemplo de events_spec.json
+```
