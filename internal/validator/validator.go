@@ -114,7 +114,11 @@ func checkFields(specs []FieldSpec, data map[string]any, playerID string) *Error
 		name := "data." + f.Name
 		raw, present := data[f.Name]
 		if !present || raw == nil {
-			if f.Required {
+			required := f.Required
+			if f.RequiredIf != "" {
+				required = required || data[f.RequiredIf] == true
+			}
+			if required {
 				return missing(name)
 			}
 			continue

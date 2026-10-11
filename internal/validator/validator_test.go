@@ -110,3 +110,34 @@ func TestMalformedRawBodyIsNotValidJSON(t *testing.T) {
 		t.Fatal("spec has no MALFORMED_JSON example")
 	}
 }
+
+func TestShootRequiresTargetIDWhenHit(t *testing.T) {
+	v := loadValidator(t)
+	player := "p1"
+	action := "SHOOT"
+	base := model.Event{
+		EventID:     "conditional-target",
+		Timestamp:   "2026-09-01T10:00:00Z",
+		GameID:      "fps-arena",
+		GameVersion: "1.0.0",
+		MatchID:     "match-conditional",
+		PlayerID:    &player,
+		Type:        "PLAYER_ACTION",
+		Action:      &action,
+		Data: map[string]any{
+			"weapon": "rifle",
+			"hit":    true,
+			"damage": float64(10),
+		},
+	}
+
+	if err := v.Validate(&base); err == nil || err.Code != CodeMissingField {
+		t.Fatalf("expected MISSING_FIELD for hit without targetId, got %v", err)
+	}
+
+	base.Data["hit"] = false
+	base.Data["damage"] = float64(0)
+	if err := v.Validate(&base); err != nil {
+		t.Fatalf("expected miss without targetId to be valid, got %v", err)
+	}
+}

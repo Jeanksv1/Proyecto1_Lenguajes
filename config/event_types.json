@@ -62,7 +62,8 @@
           },
           {
             "name": "targetId",
-            "kind": "string"
+            "kind": "string",
+            "requiredIf": "hit"
           }
         ],
         "RELOAD": [

@@ -33,6 +33,8 @@ type FieldSpec struct {
 	NotEqualToPlayerID bool     `json:"notEqualToPlayerId,omitempty"`
 	// ZeroUnless: el valor debe ser 0 cuando el campo booleano indicado sea false.
 	ZeroUnless string `json:"zeroUnless,omitempty"`
+	// RequiredIf: el campo es obligatorio cuando el campo booleano indicado sea true.
+	RequiredIf string `json:"requiredIf,omitempty"`
 }
 
 // TypeSpec describe un tipo de evento.
