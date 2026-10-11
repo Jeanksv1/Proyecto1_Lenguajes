@@ -76,9 +76,9 @@ func waitStatus(t *testing.T, st *store.Store, id string, want store.Status) {
 
 // fakeScala simula el modulo Scala y guarda lo que recibe.
 type fakeScala struct {
-	mu   sync.Mutex
-	got  map[string]analysis.Request
-	srv  *httptest.Server
+	mu  sync.Mutex
+	got map[string]analysis.Request
+	srv *httptest.Server
 }
 
 func newFakeScala(t *testing.T) *fakeScala {
