@@ -1,211 +1,107 @@
-# GameStats — Módulo Go (ingestión y procesamiento)
+# RevisaTEC
 
-Recibe eventos de partidas, los valida, los agrupa por `matchId` y, cuando una partida
-termina, la envía ordenada por `timestamp` al módulo Scala (`POST /analyze`).
-Go **no calcula estadísticas**: eso es responsabilidad de Scala.
+Plataforma de revisión de código entre pares para proyectos grupales de cursos de programación del TEC.
 
-Requiere **Go 1.22+**. Solo usa la librería estándar (sin dependencias externas).
+## Descripción
 
-## Ejecutar
+RevisaTEC se conecta al repositorio de GitHub/GitLab de cada equipo y exige que todo cambio pase por revisión de un compañero antes de fusionarse a la rama principal, replicando el flujo de trabajo estándar de la industria. Calcula un índice de contribución individual objetivo y se lo muestra al profesor en un dashboard.
 
-```bash
-go run ./cmd/server
-# con Scala:
-SCALA_URL=http://localhost:9090 go run ./cmd/server
-```
+## Problema que resuelve
 
-| Variable | Default | Descripción |
-|---|---|---|
-| `PORT` | `8080` | Puerto HTTP |
-| `EVENT_TYPES_PATH` | `config/event_types.json` | Definición de tipos de evento |
-| `SCALA_URL` | *(vacío)* | URL base del módulo Scala. Vacío = no se envía (estado `analysis_skipped`) |
-| `INGEST_WORKERS` | `4` | Goroutines de ingestión (una cola por worker) |
-| `ANALYSIS_WORKERS` | `2` | Goroutines que envían a Scala |
-| `QUEUE_SIZE` | `1024` | Tamaño de cada cola |
-| `INACTIVITY_TIMEOUT` | `0` (off) | Ej. `2m`. Cierra partidas sin actividad y las envía con `complete:false` |
+Hoy el profesor solo ve el resultado final de un repositorio, sin visibilidad de si hubo control de calidad entre compañeros ni de cuánto aportó cada estudiante. Esto genera notas grupales injustas y priva a los estudiantes de practicar el code review.
 
-## Endpoints
+## Funcionalidades principales
 
-| Método y ruta | Qué hace |
-|---|---|
-| `POST /events` | Recibe un evento (objeto) o varios (arreglo). `202` aceptado, `400` inválido, `409` duplicado, `503` cola llena |
-| `GET /matches` | Lista de partidas y su estado |
-| `GET /matches/{id}` | Resumen de una partida (jugadores, nº de eventos, estado) |
-| `GET /matches/{id}/results` | JSON de resultados que devolvió Scala |
-| `GET /matches/{id}/payload` | Lo que Go enviaría a Scala (útil para depurar sin Scala) |
-| `GET /rejected` | Últimos eventos rechazados con su código de error |
-| `GET /health` | Estado del servicio |
-
-Prueba rápida:
-
-```bash
-curl -i -X POST localhost:8080/events -d '{
-  "eventId":"e1","timestamp":"2026-09-01T10:00:00Z","gameId":"fps-arena",
-  "gameVersion":"1.0.0","matchId":"m1","playerId":null,"type":"MATCH_STARTED",
-  "data":{"map":"dust","mode":"deathmatch","maxPlayers":8}}'
-
-curl -i -X POST localhost:8080/events -d '{"eventId":"e2"}'   # 400 MISSING_FIELD
-curl localhost:8080/matches
-curl localhost:8080/rejected
-```
+- Configuración de rúbrica e indicaciones del curso con apoyo de IA (interpretación automática de PDF/DOCX/XLSX).
+- Dashboard del profesor con métricas por grupo, próximas entregas e inconvenientes.
+- Detalle de grupo con nota estimada, evidencia de PRs/commits y contribución por estudiante.
+- Síntesis del avance y retroalimentación (propuesta de la IA + versión editable del profesor).
+- Calendario de entregas con avisos automáticos.
+- Detección de inconvenientes (commits de prueba, errores de entrega).
+- Panel del estudiante con su propio aporte, retroalimentación publicada, edición de datos del grupo (integrantes, repositorio) y calendario filtrado a su propio grupo.
+- Inicio de sesión con Google (OAuth2), con redirección automática a la vista correspondiente según el rol del usuario.
 
 ## Arquitectura
 
-```
-POST /events
-   │  decodificar JSON → validar → deduplicar eventId        (síncrono, responde 400/409)
-   ▼
-hash(matchId) % N ──► cola del worker i ──► worker de ingestión i
-                                                │  store.AddEvent (RWMutex, estado por partida)
-                                                │  si el evento es MATCH_FINISHED
-                                                ▼
-                                       canal de análisis ──► worker de análisis ──► POST Scala /analyze
-```
+Microservicios comunicados por cola de mensajes: **Repo-Integration**, **Review-Workflow**, **Contribution-Metrics**, **Reports**, **Notifications**, **Rubric-AI** y **Calendar**. Backend en Azure App Service, expuesto vía Azure API Management. Autenticación OAuth2 (Google/GitHub). Ver el documento formal (`RevisaTEC_Documento_Formal.docx`) para el detalle completo.
 
-- **Concurrencia:** goroutines + channels. Una partida siempre cae en el mismo worker
-  (hash de `matchId`), así sus eventos se procesan en orden; partidas distintas van en paralelo.
-- **Estado compartido:** `sync.RWMutex` para las partidas y `sync.Map` para los `eventId` vistos.
-- **Contrapresión:** si una cola está llena, `POST /events` responde `503` (el cliente reintenta).
-- **Cierre ordenado (graceful shutdown):** deja de aceptar, vacía las colas y espera los envíos a Scala.
-- **Genérico:** los tipos de evento y sus campos obligatorios están en `config/event_types.json`,
-  no en el código. Para agregar un evento o juego nuevo basta editar ese archivo
-  (`LAP_COMPLETED` de carreras está como ejemplo).
+## Stack tecnológico
 
-## Decisiones tomadas (las que el Día 1 dejó abiertas)
+| Capa | Tecnología |
+|---|---|
+| Frontend | React 19 + Vite |
+| Backend | Azure App Service + Azure API Management |
+| CI/CD | GitHub Actions (lint, build; versionado automático por git tag) |
+| Autenticación | OAuth2 (Google, GitHub) |
+| Base de datos | Por definir en Fase 2 |
 
-1. **Evento de una partida sin `MATCH_STARTED` previo:** se acepta y la partida queda `pending`.
-2. **Evento después de `MATCH_FINISHED`:** se descarta y se registra como `MATCH_ALREADY_FINISHED` en `/rejected`.
-3. **Cuándo se envía a Scala:** al procesar el evento marcado `endsMatch` (`MATCH_FINISHED`), o por inactividad si `INACTIVITY_TIMEOUT` está activo.
-4. **Campo extra en el contrato:** el request a Scala incluye `"complete"` (bool). Es `false` si la partida se cerró por inactividad o no tuvo `MATCH_STARTED`. Avísale a tu compañero.
-5. **Reintentos a Scala:** 3 reintentos con espera creciente ante errores de red o `5xx`; no reintenta ante `4xx`.
-
-## Limitaciones conocidas
-
-- El estado vive en memoria: al reiniciar se pierde.
-- Si dos peticiones concurrentes de la **misma** partida llegan en desorden y `MATCH_FINISHED` se procesa antes que un evento anterior, ese evento se descarta. El simulador (Día 4) debe enviar `MATCH_FINISHED` al final de cada partida.
-- Una partida que solo tenga eventos como `LAP_COMPLETED` (sin tipo de inicio/fin) nunca se cierra salvo por inactividad. Para otro juego, define sus eventos de inicio/fin con `startsMatch` / `endsMatch`.
-
-## Pruebas
+## Instalación y uso
 
 ```bash
-go vet ./...
-go test -race ./...
+git clone https://github.com/Crisaraya21/revisatec.git
+cd revisatec
+npm install
+npm run dev
 ```
 
-- `internal/validator`: usa los ejemplos válidos e inválidos de `testdata/events_spec.json` (el entregable del Día 1) como casos de prueba.
-- `internal/pipeline`: partida completa enviada a un Scala simulado y ordenada por timestamp, duplicados, eventos tras el fin, y 30 partidas en paralelo (usar `-race`).
-
-## Estructura
+Variables de entorno (`.env.local`):
 
 ```
-cmd/server/main.go          arranque, variables de entorno, graceful shutdown
-config/event_types.json     tipos de evento y reglas de validación
-internal/model              struct Event
-internal/validator          validación configurable
-internal/store              estado por partida (RWMutex) + log de rechazados
-internal/pipeline           workers, colas, envío a Scala
-internal/analysis           cliente HTTP hacia Scala
-internal/api                handlers HTTP
-testdata/events_spec.json   entregable del Día 1
+VITE_API_BASE_URL=<url del gateway de Azure API Management>
 ```
 
-## Simulador de eventos (Día 4)
+## Equipo
 
-Genera eventos coherentes de varias partidas y los envía **en paralelo** (una goroutine por
-partida) al módulo Go. Al terminar compara la respuesta de cada evento con la esperada.
+- **Marlon Fabian Aragón Arce** — UX/UI: heurísticas, accesibilidad, wireframes, sistema de diseño, mockups de alta fidelidad e integración del login con Google.
+- **Cristopher Daniel Araya Vega** — Infraestructura: repositorio, diagrama de arquitectura, Azure, Mock Services y pipeline CI/CD.
+- **Leiner Josué Aguilar González (ZERO)** — Documentación formal, informe UX/UI y README.
 
-```bash
-# 1) Con el servidor Go corriendo en otra terminal:
-go run ./cmd/simulator
+## Capturas de pantalla
 
-# Solo generar un archivo, sin enviar:
-go run ./cmd/simulator -send=false -out eventos_sim.json
-```
+| | |
+|---|---|
+| **Login** (correo institucional o Google) | **Dashboard del profesor** |
+| ![Login](./screenshots/01-login.png) | ![Dashboard](./screenshots/02-dashboard-profesor.png) |
+| **Crear grupo** (modal) | **Configuración del curso** (rúbrica e IA) |
+| ![Crear grupo](./screenshots/03-crear-grupo.png) | ![Configuración del curso](./screenshots/04-configuracion-curso.png) |
+| **Calendario** | **Inconvenientes** |
+| ![Calendario](./screenshots/05-calendario.png) | ![Inconvenientes](./screenshots/06-inconvenientes.png) |
+| **Detalle de grupo** (contribución por estudiante) | **Retroalimentación** (IA + profesor) |
+| ![Detalle de grupo](./screenshots/11-detalle-grupo.png) | ![Retroalimentación](./screenshots/07-retroalimentacion.png) |
+| **Panel del estudiante** | **Mi grupo — modo oscuro** |
+| ![Panel del estudiante](./screenshots/08-panel-estudiante.png) | ![Mi grupo modo oscuro](./screenshots/09-mi-grupo-modo-oscuro.png) |
+| **Calendario — vista móvil (responsive)** | |
+| ![Calendario móvil](./screenshots/10-calendario-movil.png) | |
 
-Escenarios que genera (todos con `seed` fija, así que son reproducibles):
+> Capturas tomadas sobre el sistema desplegado. Cubren modo claro/oscuro y vista responsive (escritorio/móvil).
 
-| Partida | Escenario | Qué debe detectar Scala |
-|---|---|---|
-| `fps-01` | `streak` | 1 racha de 3 eliminaciones (< 30 s) |
-| `fps-02` | `boundary` | **Ninguna**: 3 eliminaciones a exactamente 15 s entre sí (la 3ª a 30 s de la 1ª; la regla pide *menos* de 30 s) |
-| `fps-03` | `normal` | Ninguna: eliminaciones separadas ≥ 16 s |
-| `fps-04` | `long-streak` | 1 racha de 5 eliminaciones |
-| `race-01` | `race` | Partida de otro juego (`race-x`) con vueltas y posiciones |
-
-Además inyecta 9 eventos inválidos (uno de cada tipo: falta `matchId`, timestamp inválido,
-tipo y acción desconocidos, auto-eliminación, daño negativo, sin `playerId`, duplicado y JSON
-mal formado). El simulador imprime las rachas esperadas para que se comparen con lo que calcule Scala.
-
-| Flag | Default | Descripción |
-|---|---|---|
-| `-url` | `http://localhost:8080/events` | Dónde enviar |
-| `-matches` | `4` | Partidas FPS (los escenarios rotan) |
-| `-race` | `1` | Partidas de carreras (`0` = desactivar) |
-| `-players` | `3` | Jugadores por partida FPS |
-| `-invalid` | `9` | Eventos inválidos a inyectar |
-| `-seed` | `42` | Misma semilla = mismos eventos |
-| `-prefix` | `sim-MMDD-HHMM-` | Prefijo de `matchId`/`eventId` (evita duplicados al reejecutar) |
-| `-delay` | `20ms` | Pausa entre eventos de una misma partida |
-| `-out` | *(vacío)* | Guarda los eventos en un archivo JSON |
-| `-send` | `true` | `false` = solo generar |
-
-El archivo de `-out` también se puede enviar de una vez con
-`curl -X POST localhost:8080/events -d @eventos_sim.json` (el endpoint acepta arreglos).
-
-La prueba `internal/simulator` pasa todo lo generado por el módulo Go real: los válidos se aceptan,
-cada inválido falla con el código esperado, y las rachas declaradas coinciden con la regla del Día 1.
-
----
-
-# GameStats — Módulo Scala (análisis)
-
-Recibe una partida completa desde el módulo Go (`POST /analyze`), calcula estadísticas y detecta
-patrones con colecciones funcionales, y devuelve el resultado en JSON. Scala 3.3 + sbt + Http4s
-(Ember) + circe.
-
-## Ejecutar
-
-Desde la carpeta `scala/`:
-
-```bash
-sbt run                       # escucha en :9090
-sbt test                      # pruebas (munit)
-PORT=9091 OUTPUT_DIR=./output sbt run
-```
-
-| Variable | Default | Descripción |
-|---|---|---|
-| `PORT` | `9090` | Puerto HTTP |
-| `OUTPUT_DIR` | *(vacío)* | Si se define, guarda cada resultado como `<matchId>.json` |
-
-Con Scala corriendo, arranca Go con `SCALA_URL=http://localhost:9090 go run ./cmd/server` y usa el
-simulador.
-
-## Endpoints
-
-- `POST /analyze` → `200` con el resultado, `400` si el payload es inválido, `500` en error interno.
-- `GET /health`
-
-## Qué calcula
-
-- **Por jugador:** `kills`, `deaths`, `kdRatio` (si `deaths = 0` → `kills`; 2 decimales),
-  `shots`, `hits`, `accuracy` (4 decimales), `totalDamage`.
-- **Por partida:** `durationSeconds`, `totalKills`, `mvpPlayerId` (más kills; desempates: mayor
-  daño, menos muertes, `playerId` alfabético; `null` si nadie tiene kills).
-- **Patrón `KILL_STREAK`:** ≥ 3 eliminaciones del mismo jugador con `t[i+2] - t[i] < 30 s`;
-  ventanas solapadas se fusionan.
-- La respuesta incluye además `complete` (el flag que manda Go).
-- Para otros juegos (p. ej. `race-x`) responde sin error: la duración se calcula con
-  `RACE_STARTED`/`RACE_FINISHED`, las métricas de combate quedan en cero y `raceStats`
-  incluye vueltas completadas, mejor/promedio tiempo por vuelta y posición final por piloto.
-  En partidas FPS, `raceStats` es una lista vacía.
-
-## Estructura
+## Estructura del repositorio
 
 ```
-scala/src/main/scala/gamestats/Models.scala    case classes + decoders/encoders circe
-scala/src/main/scala/gamestats/Analyzer.scala  lógica pura
-scala/src/main/scala/gamestats/Routes.scala    rutas Http4s
-scala/src/main/scala/gamestats/Main.scala      arranque del servidor
-scala/src/test/...                             pruebas con el ejemplo de events_spec.json
+revisatec/
+├── docs/                  # Diagrama de arquitectura y endpoints de Mock Services
+├── public/                # Assets estáticos
+├── src/
+│   ├── api/               # Cliente de la API (Mock Services)
+│   ├── components/        # Componentes reutilizables (Icons, formularios, banners)
+│   ├── context/            # AuthContext, ThemeContext
+│   ├── hooks/              # usePaginatedList
+│   └── pages/              # Login, Groups, GroupDetail, Rubric, Calendar, Feedback,
+│                           #   Issues, StudentDashboard, StudentFeedback, StudentGroup
+├── .github/workflows/      # CI (lint/build) y despliegue a Azure Static Web Apps
+└── README.md
 ```
+
+## Créditos
+
+- [React](https://react.dev/) — biblioteca de UI
+- [Vite](https://vitejs.dev/) — bundler y entorno de desarrollo
+- [React Router](https://reactrouter.com/) — enrutamiento
+- [Azure Static Web Apps](https://azure.microsoft.com/products/app-service/static/) — hosting
+- [Azure API Management](https://azure.microsoft.com/products/api-management/) — gateway y Mock Services
+- [GitHub Actions](https://github.com/features/actions) — CI/CD
+- [Figma](https://www.figma.com/) — diseño UI/UX
+
+## Licencia
+
+Proyecto académico — Instituto Tecnológico de Costa Rica (TEC San Carlos), curso IC-5821.
