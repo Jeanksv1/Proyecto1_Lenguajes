@@ -13,3 +13,5 @@ project/project/
 output/
 .vscode/
 .idea/
+
+*.lnk
