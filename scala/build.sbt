@@ -5,6 +5,7 @@ val http4sVersion = "0.23.30"
 val circeVersion  = "0.14.10"
 
 lazy val root = (project in file("."))
+  .enablePlugins(JavaAppPackaging)
   .settings(
     name := "gamestats-scala",
     scalacOptions ++= Seq("-deprecation", "-feature", "-unchecked"),

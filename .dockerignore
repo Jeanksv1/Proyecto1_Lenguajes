@@ -1,0 +1,11 @@
+.git
+.idea
+.vscode
+scala/
+output/
+*.md
+*.json
+!config/*.json
+!testdata/*.json
+fake_scala.py
+*.lnk

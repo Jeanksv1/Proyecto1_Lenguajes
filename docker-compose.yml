@@ -1,0 +1,52 @@
+# GameStats: ingestion (Go) + analisis (Scala).
+#
+#   docker compose up --build            # levanta Scala y Go
+#   docker compose --profile sim run --rm simulator    # envia eventos de prueba
+#   docker compose down
+services:
+  scala:
+    build: ./scala
+    environment:
+      PORT: "9090"
+      OUTPUT_DIR: /data/results       # cada resultado se guarda como <matchId>.json
+    volumes:
+      - ./output:/data/results
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  go:
+    build:
+      context: .
+      target: server
+    environment:
+      PORT: "8080"
+      SCALA_URL: http://scala:9090
+    ports:
+      - "8080:8080"
+    depends_on:
+      scala:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  simulator:
+    build:
+      context: .
+      target: simulator
+    command: ["-url", "http://go:8080/events"]
+    depends_on:
+      go:
+        condition: service_healthy
+    profiles: ["sim"]
