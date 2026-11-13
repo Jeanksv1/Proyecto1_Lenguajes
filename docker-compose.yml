@@ -1,14 +1,15 @@
-# GameStats: ingestion (Go) + analisis (Scala).
+# Plataforma Completa: GameStats (Go + Scala) + GameConsole (Web POO) + Gato AI (Prolog)
 #
-#   docker compose up --build            # levanta Scala y Go
-#   docker compose --profile sim run --rm simulator    # envia eventos de prueba
-#   docker compose down
+#   docker compose up --build                       # Levanta todo el ecosistema
+#   docker compose --profile sim run --rm simulator # Simula partidas de prueba (opcional)
+#   docker compose down                             # Apagar servicios
+
 services:
   scala:
     build: ./scala
     environment:
       PORT: "9090"
-      OUTPUT_DIR: /data/results       # cada resultado se guarda como <matchId>.json
+      OUTPUT_DIR: /data/results
     volumes:
       - ./output:/data/results
     ports:
@@ -39,6 +40,27 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    restart: unless-stopped
+
+  gato-ai:
+    build:
+      context: ./prolog-ai
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    restart: unless-stopped
+
+  game-console:
+    build:
+      context: ./game-console
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      go:
+        condition: service_healthy
+      gato-ai:
+        condition: service_started
     restart: unless-stopped
 
   simulator:
