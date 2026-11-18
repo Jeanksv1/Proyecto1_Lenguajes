@@ -18,6 +18,29 @@ jobs:
         run: test -z "$(gofmt -l .)"
       - run: go vet ./...
       - run: go test -race ./...
+  
+
+  game-console:
+    name: GameConsole (TypeScript + Vite)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game-console
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: game-console/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar GameConsole
+        run: npm run build
+
 
   scala:
     name: Scala (sbt test)
@@ -37,7 +60,7 @@ jobs:
 
   docker:
     name: Docker (build + prueba de integracion)
-    needs: [go, scala]
+    needs: [go, scala, game-console]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,3 +1,4 @@
+import { GameStatsDashboard } from './GameStatsDashboard';
 import { GameConsole } from '../core/GameConsole';
 import { MatchStatus } from '../core/types';
 
@@ -17,6 +18,7 @@ export class ConsoleUI {
     this.appContainer = el;
     this.buildLayout();
     this.setupTelemetryListener();
+    new GameStatsDashboard(document.getElementById('gamestats-dashboard') as HTMLElement);
   }
 
   private buildLayout(): void {
@@ -52,6 +54,8 @@ export class ConsoleUI {
           <li style="color: var(--text-muted);">Esperando eventos de partidas...</li>
         </ul>
       </section>
+
+      <div id="gamestats-dashboard"></div>
     `;
 
     this.catalogContainer = document.getElementById('catalog-grid') as HTMLElement;
@@ -134,26 +138,46 @@ export class ConsoleUI {
     const stopBtn = header.querySelector('.btn-stop') as HTMLButtonElement;
     const statusText = footer.querySelector('.status-indicator') as HTMLElement;
 
+    // Sincronizar la interfaz con los cambios automáticos de la partida.
+    const syncMatchStatus = (): void => {
+      const status = match.getStatus();
+      statusText.textContent = status;
+      statusText.style.color = status === MatchStatus.FINISHED
+        ? '#f87171'
+        : status === MatchStatus.PAUSED
+          ? '#fbbf24'
+          : 'var(--accent-green)';
+
+      pauseBtn.disabled = status === MatchStatus.FINISHED;
+      pauseBtn.textContent = status === MatchStatus.PAUSED ? 'Reanudar' : 'Pausar';
+      this.updateActiveCount();
+    };
+
     pauseBtn.addEventListener('click', () => {
       if (match.getStatus() === MatchStatus.RUNNING) {
         match.pause();
-        pauseBtn.textContent = 'Reanudar';
-        statusText.textContent = MatchStatus.PAUSED;
-        statusText.style.color = '#fbbf24';
-      } else {
+      } else if (match.getStatus() === MatchStatus.PAUSED) {
         match.start();
-        pauseBtn.textContent = 'Pausar';
-        statusText.textContent = MatchStatus.RUNNING;
-        statusText.style.color = 'var(--accent-green)';
       }
+      syncMatchStatus();
     });
 
+    // El juego puede finalizar por victoria, derrota o empate sin pulsar botones.
+    const statusTimer = window.setInterval(() => {
+      if (!viewportCard.isConnected) {
+        window.clearInterval(statusTimer);
+        return;
+      }
+      syncMatchStatus();
+    }, 200);
+
     stopBtn.addEventListener('click', () => {
+      window.clearInterval(statusTimer);
       this.console.terminateMatch(matchId);
       viewportCard.remove();
       this.updateActiveCount();
 
-      if (this.console.getActiveMatches().length === 0) {
+      if (this.matchesGrid.querySelectorAll('.viewport-card').length === 0) {
         this.matchesGrid.innerHTML = `
           <p id="empty-state" style="color: var(--text-muted); font-style: italic;">
             No hay partidas en ejecución. Haz clic en "▶ Iniciar Partida" para instanciar un juego.
@@ -166,7 +190,9 @@ export class ConsoleUI {
   }
 
   private updateActiveCount(): void {
-    const count = this.console.getActiveMatches().length;
+    const count = this.console.getActiveMatches().filter(
+      match => match.getStatus() === MatchStatus.RUNNING || match.getStatus() === MatchStatus.PAUSED
+    ).length;
     this.activeCountBadge.textContent = `Partidas Activas: ${count}`;
   }
 
@@ -197,3 +223,4 @@ export class ConsoleUI {
     });
   }
 }
+
