@@ -32,6 +32,12 @@ export class GameStatsDashboard {
   private readonly root: HTMLElement;
   private matches: MatchSummary[] = [];
   private selectedMatchId: string | null = null;
+  private readonly refreshIntervalMs = 3000;
+  private refreshTimer: number | null = null;
+  private refreshing = false;
+  private lastMatchesSnapshot = '';
+  private lastSelectedStatus = '';
+
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -43,6 +49,8 @@ export class GameStatsDashboard {
         </div>
         <p id="gs-message" role="status" style="color:#9cb4d4;font-size:.85rem">Consultando GameStats...</p>
         <div id="gs-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0"></div>
+        <h3 style="font-size:.95rem;color:#d7e5f7">Resumen por videojuego</h3>
+        <div id="gs-games" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:12px 0 18px"></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
           <div style="min-width:0">
             <h3 style="font-size:.95rem;color:#d7e5f7">Historial de partidas</h3>
@@ -56,6 +64,20 @@ export class GameStatsDashboard {
       </section>`;
     this.element<HTMLButtonElement>('gs-refresh').addEventListener('click', () => void this.refresh());
     void this.refresh();
+    this.refreshTimer = window.setInterval(() => {
+      if (!this.root.isConnected) {
+        this.dispose();
+        return;
+      }
+      if (!document.hidden) void this.refresh(true);
+    }, this.refreshIntervalMs);
+  }
+
+  public dispose(): void {
+    if (this.refreshTimer !== null) {
+      window.clearInterval(this.refreshTimer);
+      this.refreshTimer = null;
+    }
   }
 
   private element<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -81,10 +103,12 @@ export class GameStatsDashboard {
     return card;
   }
 
-  public async refresh(): Promise<void> {
+  public async refresh(automatic = false): Promise<void> {
+    if (this.refreshing) return;
+    this.refreshing = true;
     const button = this.element<HTMLButtonElement>('gs-refresh');
     button.disabled = true;
-    this.setMessage('Actualizando partidas desde Go...');
+    if (!automatic) this.setMessage('Actualizando partidas desde Go...');
     try {
       const response = await fetch('/api/matches');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -93,17 +117,56 @@ export class GameStatsDashboard {
           !Array.isArray((data as { matches: unknown }).matches)) {
         throw new Error('Respuesta inesperada de /api/matches');
       }
-      this.matches = (data as { matches: MatchSummary[] }).matches;
-      this.renderSummary();
-      this.renderHistory();
-      this.setMessage(`${this.matches.length} partidas recuperadas desde GameStats (Go).`);
-      if (this.selectedMatchId && this.matches.some(m => m.matchId === this.selectedMatchId)) {
-        await this.showResults(this.selectedMatchId);
+      const matches = (data as { matches: MatchSummary[] }).matches;
+      const snapshot = JSON.stringify(matches);
+      const changed = snapshot !== this.lastMatchesSnapshot;
+      this.matches = matches;
+      if (changed) {
+        this.lastMatchesSnapshot = snapshot;
+        this.renderSummary();
+        this.renderGames();
+        this.renderHistory();
+      }
+      this.setMessage(`${this.matches.length} partidas recuperadas desde GameStats (Go). Actualización automática cada 3 s.`);
+      if (this.selectedMatchId) {
+        const selected = this.matches.find(m => m.matchId === this.selectedMatchId);
+        if (selected) {
+          const currentStatus = `${selected.status}:${selected.eventCount}`;
+          if (!automatic || currentStatus !== this.lastSelectedStatus) {
+            this.lastSelectedStatus = currentStatus;
+            await this.showResults(selected.matchId);
+          }
+        }
       }
     } catch (error) {
       this.setMessage(`No se pudieron consultar las partidas: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       button.disabled = false;
+      this.refreshing = false;
+    }
+  }
+
+  private renderGames(): void {
+    const root = this.element('gs-games');
+    root.replaceChildren();
+    for (const game of [
+      { id: 'memory-match', name: 'Memory Match' },
+      { id: 'snake-match', name: 'Snake Match' },
+      { id: 'gato', name: 'Gato – Tic Tac Toe' }
+    ]) {
+      const matches = this.matches.filter(m => m.gameId === game.id);
+      const analyzed = matches.filter(m => m.status === 'analyzed').length;
+      const events = matches.reduce((sum, m) => sum + (Number(m.eventCount) || 0), 0);
+      const card = document.createElement('div');
+      card.style.cssText = 'background:#0c1322;border:1px solid #2a3b57;border-radius:7px;padding:14px';
+      const title = document.createElement('strong');
+      title.style.cssText = 'display:block;color:#2ed5e6;margin-bottom:8px';
+      title.textContent = game.name;
+      const info = document.createElement('div');
+      info.style.cssText = 'font-size:.85rem;color:#d7e5f7;line-height:1.7';
+      info.textContent = `Partidas: ${matches.length} · Analizadas: ${analyzed} · Eventos: ${events}`;
+      card.append(title, info);
+      root.appendChild(card);
     }
   }
 
@@ -142,7 +205,13 @@ export class GameStatsDashboard {
       const date = match.startedAt ? new Date(match.startedAt).toLocaleString('es-CR') : 'Sin fecha';
       info.textContent = `${match.status} · ${match.eventCount} eventos · ${date}`;
       row.append(heading, info);
-      row.addEventListener('click', () => void this.showResults(match.matchId));
+      if (match.matchId === this.selectedMatchId) {
+        row.style.borderColor = '#2ed5e6';
+      }
+      row.addEventListener('click', () => {
+        this.lastSelectedStatus = `${match.status}:${match.eventCount}`;
+        void this.showResults(match.matchId);
+      });
       root.appendChild(row);
     }
   }

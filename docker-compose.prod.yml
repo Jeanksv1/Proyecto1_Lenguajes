@@ -1,0 +1,14 @@
+
+services:
+  scala:
+    ports: !reset []
+
+  go:
+    ports: !reset []
+
+  gato-ai:
+    ports: !reset []
+
+  game-console:
+    ports: !override
+      - "3000:80"
