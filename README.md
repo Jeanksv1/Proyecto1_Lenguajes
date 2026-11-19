@@ -1,343 +1,220 @@
-# GameStats
+# GameConsole — Proyecto 2 de Lenguajes de Programación
 
-Plataforma multilenguaje para **recibir, procesar y analizar eventos de partidas de videojuegos**.
-Proyecto del curso de Lenguajes de Programación.
+**Consola web multijuego orientada a objetos, con inteligencia de juego en Prolog e integración con GameStats.**
 
-- **Go (ingestión y procesamiento):** recibe eventos por HTTP, los valida, los deduplica, los agrupa por
-  `matchId` con concurrencia (goroutines y channels) y, cuando una partida termina, la envía ordenada por
-  `timestamp` al módulo Scala. Go **no calcula estadísticas**.
-- **Scala (análisis):** transforma los eventos con colecciones funcionales (`filter`, `map`, `flatMap`,
-  `groupBy`, `foldLeft`, `reduce`), calcula las métricas, detecta patrones y devuelve el resultado en JSON.
+**Autores:** Jean Carlos Segura Vargas y Leiner Josue Aguilar González  
+**Curso:** Lenguajes de Programación  
+**Fecha de entrega:** 20 de noviembre de 2026  
+**Repositorio:** https://github.com/Jeanksv1/Proyecto1_Lenguajes  
+**Aplicación desplegada:** https://gameconsole-jeank.duckdns.org
 
+## 1. Descripción
+
+GameConsole integra tres videojuegos en una interfaz web: **Memory Match**, **Snake Match** y **Gato (Tic-Tac-Toe)**. Los juegos se ejecutan en instancias independientes, pueden mantenerse partidas simultáneas y generan eventos que se envían a **GameStats**. El panel de la consola consulta las estadísticas procesadas por GameStats y las actualiza durante el uso de la aplicación.
+
+El juego Gato incorpora un adversario automatizado cuya decisión se calcula mediante un servicio **SWI-Prolog** con el algoritmo **Minimax**.
+
+## 2. Juegos y uso de la consola
+
+| Juego | Descripción | Interacción |
+|---|---|---|
+| Memory Match | Juego de memoria en el que se descubren y emparejan cartas. | Iniciar partida y seleccionar cartas para encontrar parejas. |
+| Snake Match | Juego de serpiente que registra movimientos y consumo de alimentos. | Iniciar partida y controlar la dirección de la serpiente. |
+| Gato — Tic-Tac-Toe | Juego de tres en raya contra un adversario controlado por Prolog. | Iniciar partida, seleccionar casillas y recibir la respuesta de la IA. |
+
+Desde la biblioteca de juegos, el usuario pulsa **Iniciar Partida**. La consola crea una instancia identificable, presenta el juego y permite gestionar su ejecución. Es posible iniciar varias partidas en la misma página y utilizar otras pestañas del navegador. El monitor de eventos y el panel de estadísticas permiten observar la actividad de las partidas.
+
+## 3. Arquitectura y responsabilidades
+
+```text
+Navegador web
+    |
+    | HTTPS
+    v
+Caddy (proxy inverso y TLS)
+    |
+    v
+GameConsole (TypeScript / Vite / Nginx; contenedor :80)
+    |                        |
+    | /api/                  | /prolog/
+    v                        v
+GameStats Go (:8080)       SWI-Prolog (:5000)
+    |
+    | análisis de partidas finalizadas
+    v
+GameStats Scala (:9090)
+    |
+    v
+Resultados estadísticos JSON
+    |
+    +----> Consultados y presentados por GameConsole
 ```
-Simulador / fuente externa
-        │  POST /events  (JSON: un evento o un arreglo)
-        ▼
-┌─────────────────────────┐   POST /analyze    ┌──────────────────────────┐
-│  Módulo Go  (:8080)     │ ─────────────────► │  Módulo Scala  (:9090)   │
-│  validar · deduplicar   │   partida completa │  métricas · patrones     │
-│  agrupar · concurrencia │ ◄───────────────── │  resultado en JSON       │
-└─────────────────────────┘   resultado JSON   └──────────────────────────┘
-        │                                                  │
-   GET /matches, /results                      output/<matchId>.json (opcional)
-```
 
-## Autores
+- **GameConsole:** presentación, ciclo de vida de los juegos, lógica orientada a objetos, emisión de eventos y visualización de resultados.
+- **Go / GameStats:** recepción HTTP, validación y deduplicación de eventos, organización por partida, procesamiento concurrente y comunicación con Scala.
+- **Scala / GameStats:** análisis de eventos, cálculo de métricas y generación de resultados estadísticos.
+- **SWI-Prolog:** cálculo de las jugadas de la computadora en Gato mediante Minimax.
+- **Nginx:** entrega del frontend y encaminamiento de solicitudes `/api/` y `/prolog/` a los servicios internos.
+- **Caddy:** entrada HTTPS pública y proxy inverso hacia la consola.
 
-- Jean Carlos Segura Vargas
-- Leiner Josue Aguilar González
+Esta separación evita duplicar el cálculo estadístico en la interfaz: GameConsole presenta los resultados que proporciona GameStats.
 
-Proyecto 1 del curso de Lenguajes de Programación. Fecha de entrega: 18 de octubre de 2026.
+## 4. Diseño orientado a objetos y concurrencia
 
-## Inicio rápido con Docker (recomendado)
+Los módulos de juego mantienen sus propias reglas, estado e interacción. La consola administra instancias independientes, de manera que una partida no comparte su estado de juego con otra. La organización en objetos separa responsabilidades como la inicialización, el procesamiento de acciones y la finalización de una partida.
 
-Requisitos: **Docker** y **Docker Compose**. No hace falta instalar Go, Scala ni Java.
+Cada instancia dispone de un identificador de partida (`matchId`), que permite atribuir sus eventos al juego y a la ejecución correspondiente. Los eventos se envían a GameStats mientras se desarrollan las partidas. En Go, las partidas se distribuyen entre trabajadores concurrentes usando el identificador de partida, con colas y mecanismos de sincronización para preservar el procesamiento por instancia.
+
+## 5. Inteligencia de juego con Prolog
+
+**Gato — Tic-Tac-Toe** es el juego de usuario contra computadora. La consola envía al servicio Prolog el estado del tablero necesario para elegir la siguiente jugada. El componente de inteligencia evalúa las alternativas mediante **Minimax** y devuelve una decisión que se aplica al tablero. Así, la elección de la computadora se fundamenta en el análisis del estado del juego y no en una selección meramente aleatoria.
+
+La lógica de este componente está en `prolog-ai/` y se ejecuta en su propio contenedor Docker.
+
+## 6. Contrato de eventos e integración con GameStats
+
+Los videojuegos producen eventos compatibles con el contrato de GameStats. El formato común identifica el evento, el momento en que ocurrió, el juego, la versión, la partida, el jugador y el tipo de acción.
+
+| Campo | Propósito |
+|---|---|
+| `eventId` | Identificador único del evento. |
+| `timestamp` | Marca temporal del evento. |
+| `gameId` | Identificador del videojuego. |
+| `gameVersion` | Versión del videojuego. |
+| `matchId` | Identificador de la instancia o partida. |
+| `playerId` | Jugador relacionado con el evento, cuando corresponda. |
+| `type` | Tipo de evento. |
+| `action` | Acción específica, cuando corresponda. |
+| `data` | Información propia del evento y del juego. |
+
+Entre los eventos del ciclo de vida se encuentran `MATCH_STARTED` y `MATCH_FINISHED`; las acciones de los jugadores se representan mediante los tipos y acciones admitidos por el contrato. Los eventos concretos y sus validaciones se definen en `config/event_types.json`.
+
+El frontend se comunica con GameStats a través de la ruta `/api/` que sirve Nginx. Go recibe los eventos, verifica su estructura, controla duplicados y organiza los registros por `matchId`. Al finalizar una partida, solicita el análisis a Scala. La interfaz consulta las respuestas de GameStats para mostrar el historial y las estadísticas.
+
+## 7. Panel de estadísticas
+
+El panel integrado muestra información general y por videojuego, incluyendo partidas registradas, partidas analizadas, eventos registrados, distribución de partidas por juego, historial de partidas y resultados del análisis. También dispone de un monitor de eventos en tiempo real. La interfaz actualiza periódicamente la información consultada a GameStats mientras la consola está en uso.
+
+## 8. Tecnologías
+
+| Componente | Tecnología |
+|---|---|
+| Consola y videojuegos | TypeScript, Vite, HTML/CSS, programación orientada a objetos |
+| Servidor web del frontend | Nginx |
+| API e ingestión de GameStats | Go |
+| Análisis estadístico | Scala |
+| Inteligencia del juego Gato | SWI-Prolog, Minimax |
+| Contenedores | Docker y Docker Compose |
+| Automatización | GitHub Actions |
+| Servidor de producción | Máquina virtual Ubuntu 24.04 LTS en Microsoft Azure |
+| Acceso público | DuckDNS, Caddy y HTTPS |
+
+## 9. Instalación y ejecución local
+
+**Requisitos:** Git, Docker Engine o Docker Desktop y Docker Compose v2. No es necesario instalar Go, Scala, Java, Node.js ni Prolog en el equipo anfitrión cuando se utiliza Docker.
 
 ```bash
-docker compose up --build                              # levanta Scala (9090) y Go (8080)
-docker compose --profile sim run --rm simulator        # envía eventos de prueba (en otra terminal)
-curl localhost:8080/matches                            # estado de las partidas
-docker compose down                                    # apagar
+git clone https://github.com/Jeanksv1/Proyecto1_Lenguajes.git
+cd Proyecto1_Lenguajes
+docker compose up -d --build --wait
+docker compose ps
 ```
 
-La primera vez, la compilación de Scala puede tardar varios minutos.
-Cuando termina el simulador, las 5 partidas deben aparecer con `"status":"analyzed"`.
-Los resultados de Scala también se guardan como `output/<matchId>.json`.
+Abrir **http://localhost:3000** en el navegador.
 
-Para ver el resultado de una partida: `curl localhost:8080/matches/<matchId>/results`.
+Los servicios locales del archivo `docker-compose.yml` se publican en los puertos 3000 (consola), 8080 (Go), 9090 (Scala) y 5000 (Prolog). La primera construcción puede tardar varios minutos, especialmente la imagen de Scala.
 
-## Ejecución sin Docker
-
-Requisitos: **Go 1.22+** (solo librería estándar) y, para Scala, **JDK 17 o 21** y **sbt**.
+Comprobaciones de GameStats:
 
 ```bash
-# Terminal 1: módulo Scala (puerto 9090)
-cd scala
-sbt run
-
-# Terminal 2: módulo Go (puerto 8080)
-SCALA_URL=http://localhost:9090 go run ./cmd/server
-#   PowerShell:  $env:SCALA_URL="http://localhost:9090"; go run ./cmd/server
-
-# Terminal 3: simulador de eventos
-go run ./cmd/simulator
+curl http://localhost:8080/health
+curl http://localhost:8080/matches
 ```
 
-Sin `SCALA_URL`, Go funciona igual pero no envía a Scala (las partidas quedan en `analysis_skipped`).
-Para probar solo Go existe `fake_scala.py`, un Scala falso que responde `{"ok": true}`.
-
-## Variables de entorno
-
-**Módulo Go**
-
-| Variable | Default | Descripción |
-|---|---|---|
-| `PORT` | `8080` | Puerto HTTP |
-| `EVENT_TYPES_PATH` | `config/event_types.json` | Definición de tipos de evento |
-| `SCALA_URL` | *(vacío)* | URL base del módulo Scala. Vacío = no se envía (`analysis_skipped`) |
-| `INGEST_WORKERS` | `4` | Goroutines de ingestión (una cola por worker) |
-| `ANALYSIS_WORKERS` | `2` | Goroutines que envían a Scala |
-| `QUEUE_SIZE` | `1024` | Tamaño de cada cola |
-| `INACTIVITY_TIMEOUT` | `0` (off) | Ej. `2m`. Cierra partidas sin actividad y las envía con `complete:false` |
-
-**Módulo Scala**
-
-| Variable | Default | Descripción |
-|---|---|---|
-| `PORT` | `9090` | Puerto HTTP |
-| `OUTPUT_DIR` | *(vacío)* | Si se define, guarda cada resultado como `<matchId>.json` en esa carpeta |
-
-En `docker-compose.yml`, Scala usa `OUTPUT_DIR=/data/results`, montada en `./output`.
-
-## Endpoints
-
-**Go (`:8080`)**
-
-| Método y ruta | Qué hace |
-|---|---|
-| `POST /events` | Recibe un evento (objeto) o varios (arreglo). `202` aceptado, `400` inválido, `409` duplicado, `503` cola llena |
-| `GET /matches` | Lista de partidas y su estado |
-| `GET /matches/{id}` | Resumen de una partida (jugadores, nº de eventos, estado) |
-| `GET /matches/{id}/results` | JSON de resultados que devolvió Scala |
-| `GET /matches/{id}/payload` | Lo que Go enviaría a Scala (útil para depurar) |
-| `GET /rejected` | Últimos eventos rechazados con su código de error |
-| `GET /health` | Estado del servicio |
-
-**Scala (`:9090`)**
-
-| Método y ruta | Qué hace |
-|---|---|
-| `POST /analyze` | Analiza una partida. `200` con el resultado, `400` si el payload es inválido, `500` en error interno |
-| `GET /health` | Estado del servicio |
-
-Prueba rápida:
+Ejecutar el simulador de integración de GameStats:
 
 ```bash
-curl -i -X POST localhost:8080/events -d '{
-  "eventId":"e1","timestamp":"2026-09-01T10:00:00Z","gameId":"fps-arena",
-  "gameVersion":"1.0.0","matchId":"m1","playerId":null,"type":"MATCH_STARTED",
-  "data":{"map":"dust","mode":"deathmatch","maxPlayers":8}}'
-
-curl -i -X POST localhost:8080/events -d '{"eventId":"e2"}'      # 400 MISSING_FIELD
-curl -X POST localhost:8080/events -d @testdata/partida.json      # una partida completa
-curl localhost:8080/matches
-curl localhost:8080/rejected
+docker compose --profile sim run --rm simulator
 ```
 
-## Formato de eventos
+Consultar el estado y detener el entorno:
 
-Todos los eventos comparten un **envelope** común, y el campo `data` es flexible según el tipo.
-La especificación completa, con ejemplos válidos e inválidos, está en
-[`testdata/events_spec.json`](testdata/events_spec.json).
-
-| Campo | Descripción |
-|---|---|
-| `eventId` | Identificador único del evento (un repetido se rechaza como `DUPLICATE_EVENT`) |
-| `timestamp` | RFC 3339 en UTC, con milisegundos (ej. `2026-09-01T10:00:12.000Z`) |
-| `gameId`, `gameVersion` | Juego que produjo el evento |
-| `matchId` | Partida a la que pertenece |
-| `playerId` | Jugador asociado; `null` en eventos de inicio/fin de partida |
-| `type` | Tipo de evento definido en `config/event_types.json` |
-| `action` | Solo en `PLAYER_ACTION` (`SHOOT`, `RELOAD`, `MOVE`, `PICKUP_ITEM`) |
-| `data` | Campos específicos del tipo o la acción |
-
-**Juego inicial: `fps-arena` (FPS).** Eventos: `MATCH_STARTED`, `PLAYER_JOINED`, `PLAYER_ACTION`,
-`PLAYER_ELIMINATED` (el `playerId` es quien elimina; la víctima va en `data.victimId`), `MATCH_FINISHED`.
-
-**Segundo juego, para demostrar extensibilidad: `race-x` (carreras).** Eventos: `RACE_STARTED`,
-`LAP_COMPLETED`, `RACE_FINISHED`.
-
-**Códigos de error de validación:** `MALFORMED_JSON`, `MISSING_FIELD`, `INVALID_TIMESTAMP`, `UNKNOWN_TYPE`,
-`UNKNOWN_ACTION`, `INVALID_FIELD_VALUE`, `DUPLICATE_EVENT` y `MATCH_ALREADY_FINISHED`.
-
-Regla condicional: en `PLAYER_ACTION`/`SHOOT`, `data.targetId` es obligatorio cuando `hit=true`
-(propiedad `requiredIf` en `config/event_types.json`), y `damage` debe ser `0` si `hit=false`.
-
-### Agregar un evento o un juego nuevo
-
-Los tipos de evento y sus campos obligatorios viven en `config/event_types.json`, no en el código.
-Para sumar un evento o un juego basta editar ese archivo. Los eventos que inician o terminan una partida
-se marcan con `startsMatch` / `endsMatch`.
-
-## Contrato Go → Scala
-
-`POST /analyze` con una partida completa y ordenada por `timestamp`:
-
-```json
-{
-  "matchId": "match-001", "gameId": "fps-arena", "gameVersion": "1.0.0",
-  "sentAt": "2026-09-01T10:01:01.000Z",
-  "complete": true,
-  "events": [ { "eventId": "e1", "timestamp": "...", "type": "MATCH_STARTED", "...": "..." } ]
-}
+```bash
+docker compose logs --tail=100
+docker compose down
 ```
 
-`complete` es un campo adicional: es `false` si la partida se cerró por inactividad o nunca recibió su
-evento de inicio. Respuesta de Scala:
+## 10. Despliegue en Azure
 
-```json
-{
-  "matchId": "match-001", "gameId": "fps-arena", "complete": true,
-  "matchStats":  { "durationSeconds": 60.0, "totalKills": 3, "mvpPlayerId": "p1" },
-  "playerStats": [ { "playerId": "p1", "kills": 3, "deaths": 0, "kdRatio": 3.0, "shots": 2,
-                     "hits": 1, "accuracy": 0.5, "totalDamage": 100.0 } ],
-  "patterns":    { "killStreaks": [ { "playerId": "p1", "killCount": 3,
-                     "startTime": "2026-09-01T10:00:12.000Z", "endTime": "2026-09-01T10:00:33.000Z",
-                     "durationMs": 21000 } ] },
-  "raceStats":   []
-}
+La versión de producción se ejecuta en la máquina virtual `vm-gameconsole`, con Ubuntu 24.04 LTS, 2 vCPU y 4 GiB de RAM. Docker Compose administra los cuatro servicios: `game-console`, `gato-ai`, `go` y `scala`.
+
+Se utiliza el archivo `docker-compose.prod.yml` como complemento de la configuración base. Esta variante no publica directamente Go, Scala ni Prolog en Internet; la consola queda disponible en el puerto 3000 del servidor para que Caddy actúe como proxy inverso.
+
+```bash
+cd ~/Proyecto1_Lenguajes
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
+sudo docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
 ```
 
-## Qué calcula Scala
+El acceso público se realiza mediante **https://gameconsole-jeank.duckdns.org**, con certificados HTTPS gestionados por Caddy. La configuración de despliegue y operación está detallada en [DEPLOY.md](DEPLOY.md).
 
-**Por jugador**
+## 11. Integración y despliegue continuos (CI/CD)
 
-| Métrica | Definición |
-|---|---|
-| `kills` / `deaths` | `PLAYER_ELIMINATED` como killer / como víctima (`data.victimId`) |
-| `kdRatio` | `kills / deaths`; si `deaths = 0` vale `kills` (2 decimales) |
-| `shots` / `hits` | `PLAYER_ACTION` con `SHOOT` / los que tienen `hit = true` |
-| `accuracy` | `hits / shots`; `0.0` si no hay disparos (4 decimales) |
-| `totalDamage` | Suma de `data.damage` de sus `SHOOT` |
+El repositorio incorpora dos flujos de GitHub Actions:
 
-**Por partida**
+**Integración continua — `.github/workflows/ci.yml`:** se ejecuta en cambios a `main` y en solicitudes de incorporación. Comprueba formato, análisis estático y pruebas de Go; compila el frontend TypeScript/Vite; ejecuta pruebas de Scala; construye los contenedores y verifica la integración enviando partidas del simulador a GameStats.
 
-| Métrica | Definición |
-|---|---|
-| `durationSeconds` | Fin menos inicio de la partida (`MATCH_*` o `RACE_*`) |
-| `totalKills` | Total de `PLAYER_ELIMINATED` |
-| `mvpPlayerId` | Más kills; desempates: mayor `totalDamage`, menos `deaths`, `playerId` alfabético. `null` si nadie tiene kills |
+**Despliegue continuo — `.github/workflows/deploy.yml`:** se activa tras una ejecución satisfactoria del CI correspondiente a un `push` en `main`. Verifica la identidad SSH del servidor, se conecta a Azure, obtiene el commit aprobado, reconstruye y actualiza los contenedores con Docker Compose y muestra su estado.
 
-**Patrón de secuencia: `KILL_STREAK` (racha de eliminaciones).** Un jugador hace 3 o más eliminaciones tales
-que la tercera ocurre en **menos de 30 s** después de la primera (`t[i+2] − t[i] < 30 000 ms`).
-Las ventanas que se solapan se fusionan en una sola racha. Con exactamente 30 s **no** es racha.
+Las credenciales de acceso al servidor se almacenan como secretos de GitHub Actions (`AZURE_HOST`, `AZURE_USER`, `AZURE_SSH_KEY`), sin incorporarlas al código fuente.
 
-**Carreras (`race-x`): `raceStats`.** Por piloto, a partir de `LAP_COMPLETED`: `lapsCompleted`,
-`bestLapMs`, `avgLapMs` y `finalPosition` (la posición de su última vuelta). En partidas de otro tipo
-queda vacío (`[]`).
+## 12. Pruebas y demostración funcional
 
-## Arquitectura del módulo Go
-
-- **Concurrencia:** goroutines y channels. Una partida siempre cae en el mismo worker (hash de `matchId`),
-  así sus eventos se procesan en orden; partidas distintas se procesan en paralelo.
-- **Estado compartido:** `sync.RWMutex` para las partidas y `sync.Map` para los `eventId` vistos.
-- **Contrapresión:** si una cola está llena, `POST /events` responde `503` y el cliente reintenta.
-- **Reintentos hacia Scala:** 3 reintentos con espera creciente ante errores de red o `5xx`; no reintenta ante `4xx`.
-- **Cierre ordenado (graceful shutdown):** deja de aceptar eventos, vacía las colas y espera los envíos a Scala.
-- **Genérico:** la validación se configura en `config/event_types.json`.
-
-```
-POST /events
-   │  decodificar JSON → validar → deduplicar eventId        (síncrono, responde 400/409)
-   ▼
-hash(matchId) % N ──► cola del worker i ──► worker de ingestión i
-                                                │  store.AddEvent (RWMutex, estado por partida)
-                                                │  si el evento cierra la partida
-                                                ▼
-                                       canal de análisis ──► worker de análisis ──► POST Scala /analyze
-```
-
-## Decisiones de diseño
-
-1. **Evento de una partida sin inicio previo:** se acepta y la partida queda `pending`.
-2. **Evento después del fin de la partida:** se descarta y se registra como `MATCH_ALREADY_FINISHED` en `/rejected`.
-3. **Cuándo se envía a Scala:** al procesar el evento marcado `endsMatch`, o por inactividad si `INACTIVITY_TIMEOUT` está activo.
-4. **Campo extra en el contrato:** `complete` (bool) en el request a Scala.
-5. **Scala no confía en el orden:** vuelve a ordenar los eventos por `timestamp` antes de calcular.
-
-## Limitaciones conocidas
-
-- El estado vive en memoria: al reiniciar Go se pierde.
-- Si dos peticiones concurrentes de la **misma** partida llegan en desorden y el evento de fin se procesa antes
-  que uno anterior, ese evento se descarta. El simulador envía el evento de fin al final de cada partida.
-- Una partida cuyos eventos no incluyan tipos de inicio/fin nunca se cierra, salvo por inactividad.
-  Para otro juego hay que definir esos eventos con `startsMatch` / `endsMatch`.
-- Si Scala no responde, los workers de análisis esperan; con las colas llenas, Go responde `503`.
-- La API no tiene autenticación: está pensada para ejecutarse de forma local.
-
-## Simulador de eventos
-
-Genera eventos coherentes de varias partidas y los envía **en paralelo** (una goroutine por partida) a Go.
-Al terminar compara la respuesta de cada evento con la esperada. Con `docker compose` se ejecuta con
-`docker compose --profile sim run --rm simulator`; sin Docker, con `go run ./cmd/simulator`.
-
-| Partida | Escenario | Qué debe detectar Scala |
-|---|---|---|
-| `fps-01` | `streak` | 1 racha de 3 eliminaciones (< 30 s) |
-| `fps-02` | `boundary` | **Ninguna**: 3 eliminaciones a exactamente 15 s entre sí (la 3.ª a 30 s de la 1.ª) |
-| `fps-03` | `normal` | Ninguna: eliminaciones separadas ≥ 16 s |
-| `fps-04` | `long-streak` | 1 racha de 5 eliminaciones |
-| `race-01` | `race` | Partida de `race-x`, con `raceStats` por piloto |
-
-Además inyecta 9 eventos inválidos (falta `matchId`, timestamp inválido, tipo y acción desconocidos,
-auto-eliminación, daño negativo, sin `playerId`, duplicado y JSON mal formado).
-
-| Flag | Default | Descripción |
-|---|---|---|
-| `-url` | `http://localhost:8080/events` | Dónde enviar |
-| `-matches` | `4` | Partidas FPS (los escenarios rotan) |
-| `-race` | `1` | Partidas de carreras (`0` = desactivar) |
-| `-players` | `3` | Jugadores por partida FPS |
-| `-invalid` | `9` | Eventos inválidos a inyectar |
-| `-seed` | `42` | Misma semilla = mismos eventos |
-| `-prefix` | `sim-MMDD-HHMM-` | Prefijo de `matchId`/`eventId` (evita duplicados al reejecutar) |
-| `-delay` | `20ms` | Pausa entre eventos de una misma partida |
-| `-out` | *(vacío)* | Guarda los eventos en un archivo JSON |
-| `-send` | `true` | `false` = solo generar |
-
-## Pruebas
+La validación automática incluye:
 
 ```bash
 go vet ./...
-go test -race ./...        # Go
+go test -race ./...
+```
 
+```bash
 cd scala
-sbt test                   # Scala (munit)
+sbt test
 ```
 
-- **Go:** `internal/validator` usa los ejemplos válidos e inválidos de `testdata/events_spec.json`;
-  `internal/pipeline` prueba una partida completa contra un Scala simulado, duplicados, eventos tras el fin
-  y 30 partidas en paralelo; `internal/simulator` pasa todo lo generado por el módulo Go real.
-- **Scala:** `AnalyzerSuite` (métricas, MVP, rachas, caso límite de 30 s, carreras) y `RoutesSuite`
-  (rutas HTTP: `/health`, `/analyze` válido e inválido).
-
-## CI/CD y Docker
-
-- **Docker:** `Dockerfile` (Go, multietapa, con imágenes `server` y `simulator`), `scala/Dockerfile`
-  (Scala, multietapa: compila con JDK 21 + sbt y ejecuta con un JRE ligero) y `docker-compose.yml`
-  que une ambos módulos. Go espera a que Scala esté saludable antes de iniciar.
-- **CI (GitHub Actions):** `.github/workflows/ci.yml` ejecuta en cada push y pull request:
-  1. `go`: `gofmt`, `go vet` y `go test -race`.
-  2. `scala`: `sbt test` con JDK 21.
-  3. `docker`: construye ambas imágenes, levanta el sistema, envía los eventos del simulador y
-     verifica que las 5 partidas queden `analyzed`.
-
-## Despliegue
-
-El sistema se ejecuta **de forma local con Docker Compose** (ver *Inicio rápido*). No necesita un servidor
-remoto ni ninguna licencia. [`DEPLOY.md`](DEPLOY.md) describe cómo ejecutarlo en un servidor con Docker,
-por si se quisiera llevar a otro entorno.
-
-## Estructura del repositorio
-
+```bash
+cd game-console
+npm ci
+npm run build
 ```
-cmd/server/main.go            arranque del módulo Go, variables de entorno, graceful shutdown
-cmd/simulator/main.go         simulador de eventos
-config/event_types.json       tipos de evento y reglas de validación
-internal/model                struct Event
-internal/validator            validación configurable
-internal/store                estado por partida (RWMutex) + log de rechazados
-internal/pipeline             workers, colas, envío a Scala
-internal/analysis             cliente HTTP hacia Scala
-internal/api                  handlers HTTP
-internal/simulator            generador de partidas y eventos inválidos
-testdata/                     events_spec.json (spec de eventos), evento.json, partida.json
-scala/                        módulo Scala (sbt): modelos, Analyzer, rutas http4s, pruebas
-Dockerfile                    imágenes de Go (server y simulator)
-scala/Dockerfile              imagen de Scala
-docker-compose.yml            orquestación local de Go + Scala
-.github/workflows/ci.yml      pipeline de CI
-DEPLOY.md                     guía para ejecutarlo en un servidor con Docker
-fake_scala.py                 Scala falso para probar Go por separado
-output/                       resultados JSON de Scala (se genera al ejecutar con Docker)
+
+La demostración funcional del sistema comprende el inicio y desarrollo de los tres juegos, varias instancias simultáneas, la respuesta de Prolog en Gato, la emisión de eventos y la actualización del panel de GameStats. El flujo de CI/CD permite comprobar la construcción e integración antes del despliegue.
+
+## 13. Estructura del repositorio
+
+```text
+.github/workflows/ci.yml       Pruebas y construcción continua
+.github/workflows/deploy.yml   Despliegue automatizado en Azure
+cmd/                           Servicios y simulador Go
+config/event_types.json        Contrato y validaciones de eventos
+internal/                      API, ingestión, procesamiento y almacenamiento Go
+scala/                         Servicio de análisis estadístico
+prolog-ai/                     Servicio de inteligencia en Prolog
+game-console/                  Interfaz web y videojuegos
+Dockerfile                     Construcción de Go
+docker-compose.yml             Orquestación local
+docker-compose.prod.yml        Configuración de producción
+README.md                      Descripción, uso y arquitectura
+DEPLOY.md                      Guía de despliegue y operación
 ```
+
+## 14. Decisiones técnicas principales
+
+1. **Tres juegos en una sola consola:** interfaz común y módulos independientes para mantener el estado de cada partida.
+2. **POO en los videojuegos:** encapsulación del estado y las reglas de juego en componentes con responsabilidades diferenciadas.
+3. **Prolog como servicio separado:** la estrategia Minimax se calcula fuera del frontend y su resultado se utiliza durante la partida.
+4. **GameStats como responsable de las métricas:** Go procesa los eventos y Scala calcula estadísticas; el frontend únicamente las consulta y presenta.
+5. **Identificación por partida:** los identificadores permiten separar eventos concurrentes.
+6. **Docker Compose:** ejecución reproducible de los cuatro servicios.
+7. **Azure con Caddy:** despliegue accesible mediante dominio y HTTPS, sin exponer directamente los servicios internos.
+8. **GitHub Actions:** comprobación automática del código y actualización del servidor después de una integración exitosa.
