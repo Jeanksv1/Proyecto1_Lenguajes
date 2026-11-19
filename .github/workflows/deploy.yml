@@ -1,0 +1,75 @@
+
+name: CD - Deploy GameConsole to Azure
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gameconsole-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Azure VM
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configurar SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.AZURE_SSH_KEY }}
+          AZURE_HOST: ${{ secrets.AZURE_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t ed25519 "$AZURE_HOST" > ~/.ssh/known_hosts
+
+          ACTUAL=$(ssh-keygen -lf ~/.ssh/known_hosts -E sha256 | awk '{print $2}')
+          ESPERADA="SHA256:WRj0N9bE2SS6p33o65nrdIuokeIGc9CRAWF4ZAC1x0"
+
+          if [ "$ACTUAL" != "$ESPERADA" ]; then
+            echo "ERROR: La huella SSH del servidor no coincide."
+            exit 1
+          fi
+
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Desplegar GameConsole
+        env:
+          AZURE_HOST: ${{ secrets.AZURE_HOST }}
+          AZURE_USER: ${{ secrets.AZURE_USER }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          ssh -o StrictHostKeyChecking=yes \
+            "$AZURE_USER@$AZURE_HOST" \
+            "bash -se -- '$DEPLOY_SHA'" <<'EOF'
+          set -e
+          DEPLOY_SHA="$1"
+          cd ~/Proyecto1_Lenguajes
+
+          git fetch origin main
+          git checkout --detach "$DEPLOY_SHA"
+
+          sudo docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prod.yml \
+            up -d --build --wait
+
+          sudo docker compose \
+            -f docker-compose.yml \
+            -f docker-compose.prod.yml \
+            ps
+          EOF
