@@ -19,10 +19,12 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Azure VM
+
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'push' &&
       github.event.workflow_run.head_repository.full_name == github.repository
+
     runs-on: ubuntu-latest
 
     steps:
@@ -31,14 +33,29 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.AZURE_SSH_KEY }}
           AZURE_HOST: ${{ secrets.AZURE_HOST }}
         run: |
+          set -euo pipefail
+
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
+
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -t ed25519 "$AZURE_HOST" > ~/.ssh/known_hosts
+
+          echo "Consultando clave SSH del servidor..."
+
+          ssh-keyscan -T 10 -t ed25519 "$AZURE_HOST" \
+            2>/dev/null > ~/.ssh/known_hosts
+
+          if [ ! -s ~/.ssh/known_hosts ]; then
+            echo "ERROR: No se pudo obtener la clave SSH del servidor."
+            exit 1
+          fi
 
           ACTUAL=$(ssh-keygen -lf ~/.ssh/known_hosts -E sha256 | awk '{print $2}')
           ESPERADA="SHA256:WRj0N9bE2SS6p33o65nrdIuokeIGc9CRAWF4ZAC1x0"
+
+          echo "Huella recibida: $ACTUAL"
+          echo "Huella esperada: $ESPERADA"
 
           if [ "$ACTUAL" != "$ESPERADA" ]; then
             echo "ERROR: La huella SSH del servidor no coincide."
@@ -47,29 +64,44 @@ jobs:
 
           chmod 600 ~/.ssh/known_hosts
 
+          echo "Verificación SSH completada correctamente."
+
       - name: Desplegar GameConsole
         env:
           AZURE_HOST: ${{ secrets.AZURE_HOST }}
           AZURE_USER: ${{ secrets.AZURE_USER }}
           DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
+          set -euo pipefail
+
+          echo "Conectando a Azure..."
+
           ssh -o StrictHostKeyChecking=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=15 \
             "$AZURE_USER@$AZURE_HOST" \
             "bash -se -- '$DEPLOY_SHA'" <<'EOF'
-          set -e
+          set -euo pipefail
+
           DEPLOY_SHA="$1"
+
           cd ~/Proyecto1_Lenguajes
 
+          echo "Actualizando repositorio..."
           git fetch origin main
           git checkout --detach "$DEPLOY_SHA"
 
+          echo "Construyendo y desplegando contenedores..."
           sudo docker compose \
             -f docker-compose.yml \
             -f docker-compose.prod.yml \
             up -d --build --wait
 
+          echo "Verificando estado de los servicios..."
           sudo docker compose \
             -f docker-compose.yml \
             -f docker-compose.prod.yml \
             ps
+
+          echo "Despliegue de GameConsole completado."
           EOF
